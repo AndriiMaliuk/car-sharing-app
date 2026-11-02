@@ -18,25 +18,6 @@ class StripeWebhookServiceTest {
     private final PaymentRepository repository = mock(PaymentRepository.class);
     private final StripeWebhookService service = new StripeWebhookService(repository);
 
-    private void deliver(String status) throws Exception {
-        ReflectionTestUtils.setField(service, "webhookSecret", "whsec_test");
-        String payload = "{\"id\":\"evt_test\",\"object\":\"event\",\"api_version\":\""
-                + Stripe.API_VERSION + "\",\"type\":\"checkout.session.completed\","
-                + "\"data\":{\"object\":{\"object\":\"checkout.session\",\"id\":\"cs_test\","
-                + "\"amount_total\":1000,\"currency\":\"usd\",\"payment_intent\":\"pi_test\","
-                + "\"payment_status\":\"" + status + "\"}}}";
-        service.handleEvent(payload, Webhook.Signature.generateSignatureHeader(payload, "whsec_test"));
-    }
-
-    private Payment payment() {
-        Payment payment = new Payment();
-        payment.setAmountTotal(1000L);
-        payment.setCurrency("usd");
-        payment.setPaymentStatus(Payment.PaymentStatus.UNPAID);
-        when(repository.findBySessionId("cs_test")).thenReturn(Optional.of(payment));
-        return payment;
-    }
-
     @Test
     void marksPaidAndIgnoresDuplicates() throws Exception {
         Payment payment = payment();
@@ -74,5 +55,24 @@ class StripeWebhookServiceTest {
         ReflectionTestUtils.setField(service, "webhookSecret", "whsec_test");
         assertThrows(IllegalArgumentException.class, () -> service.handleEvent("{}", signature));
         verifyNoInteractions(repository);
+    }
+
+    private void deliver(String status) throws Exception {
+        ReflectionTestUtils.setField(service, "webhookSecret", "whsec_test");
+        String payload = "{\"id\":\"evt_test\",\"object\":\"event\",\"api_version\":\""
+                + Stripe.API_VERSION + "\",\"type\":\"checkout.session.completed\","
+                + "\"data\":{\"object\":{\"object\":\"checkout.session\",\"id\":\"cs_test\","
+                + "\"amount_total\":1000,\"currency\":\"usd\",\"payment_intent\":\"pi_test\","
+                + "\"payment_status\":\"" + status + "\"}}}";
+        service.handleEvent(payload, Webhook.Signature.generateSignatureHeader(payload, "whsec_test"));
+    }
+
+    private Payment payment() {
+        Payment payment = new Payment();
+        payment.setAmountTotal(1000L);
+        payment.setCurrency("usd");
+        payment.setPaymentStatus(Payment.PaymentStatus.UNPAID);
+        when(repository.findBySessionId("cs_test")).thenReturn(Optional.of(payment));
+        return payment;
     }
 }

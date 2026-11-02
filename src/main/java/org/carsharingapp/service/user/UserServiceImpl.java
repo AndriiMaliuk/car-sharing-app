@@ -29,7 +29,9 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponseDto register(UserRegistrationRequestDto requestDto) {
         if (userRepository.findByEmail(requestDto.getEmail()).isPresent()) {
-            throw new RegistrationException("Can't register user");
+            throw new RegistrationException("Can't register user with email: "
+                    + requestDto.getEmail()
+                    + "; email is already registered");
         }
         User user = userMapper.toModel(requestDto);
         user.setPassword(passwordEncoder.encode(requestDto.getPassword()));
@@ -39,6 +41,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public void update(UpdateUserRequestDto requestDto) {
         User user = getAuthenticatedUser();
         userMapper.updateUserFromDto(requestDto, user);
@@ -51,6 +54,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public void updateUserRole(Long id, UpdateUserRoleRequestDto requestDto) {
         User user = userRepository.findById(id).orElseThrow(() ->
                 new EntityNotFoundException("Can't find user with id: " + id));
@@ -63,6 +67,7 @@ public class UserServiceImpl implements UserService {
         if (authentication != null && authentication.getPrincipal() instanceof User user) {
             return user;
         }
-        throw new RuntimeException("Can't find authenticated user");
+        throw new RuntimeException("Can't find authenticated user; authentication present: "
+                + (authentication != null));
     }
 }

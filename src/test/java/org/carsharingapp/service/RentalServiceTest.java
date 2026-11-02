@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.time.LocalDate;
 import java.util.Optional;
 import org.carsharingapp.dto.rental.CreateRentalRequestDto;
@@ -59,6 +61,27 @@ class RentalServiceTest {
         assertEquals(1L, rental.getUserId());
         assertEquals(rental.getRentalDate().plusDays(3), rental.getReturnDate());
         verify(notifications).sendMessage(contains("Rental id: <code>2"));
+    }
+
+    @Test
+    void sendsNotificationOnlyAfterCommit() {
+        CreateRentalRequestDto request = new CreateRentalRequestDto();
+        request.setDaysCount(2);
+        when(mapper.toModel(request)).thenReturn(rental);
+        Car car = new Car();
+        car.setInventory(2);
+        when(cars.findById(3L)).thenReturn(Optional.of(car));
+        when(rentals.save(rental)).thenReturn(rental);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.save(request);
+            verifyNoInteractions(notifications);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(TransactionSynchronization::afterCommit);
+            verify(notifications).sendMessage(contains("Rental id: <code>2"));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test

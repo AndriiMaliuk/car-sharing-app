@@ -39,9 +39,11 @@ public class StripeWebhookService {
                     break;
             }
         } catch (SignatureVerificationException e) {
-            throw new IllegalArgumentException("Invalid Stripe signature", e);
+            throw new IllegalArgumentException("Invalid Stripe signature; header present: "
+                    + (signature != null && !signature.isBlank()), e);
         } catch (JsonSyntaxException e) {
-            throw new IllegalArgumentException("Invalid Stripe webhook JSON", e);
+            throw new IllegalArgumentException("Invalid Stripe webhook JSON; payload length: "
+                    + (payload == null ? 0 : payload.length()), e);
         }
     }
 
@@ -54,7 +56,11 @@ public class StripeWebhookService {
         if (!Objects.equals(payment.getAmountTotal(), session.getAmountTotal())
                 || !Objects.equals(payment.getCurrency(), session.getCurrency())) {
             throw new IllegalStateException(
-                    "Payment amount or currency mismatch: " + session.getId()
+                    "Payment amount or currency mismatch for session: " + session.getId()
+                            + "; expected: " + payment.getAmountTotal()
+                            + " " + payment.getCurrency()
+                            + ", received: " + session.getAmountTotal()
+                            + " " + session.getCurrency()
             );
         }
 
@@ -74,11 +80,14 @@ public class StripeWebhookService {
                 .getObject()
                 .orElseThrow(() -> new IllegalStateException(
                         "Cannot deserialize Stripe event: " + event.getId()
+                                + ", type: " + event.getType()
+                                + ", API version: " + event.getApiVersion()
                 ));
 
         if (!(object instanceof Session session)) {
             throw new IllegalStateException(
                     "Expected Checkout Session for event: " + event.getId()
+                            + ", received type: " + object.getClass().getSimpleName()
             );
         }
 

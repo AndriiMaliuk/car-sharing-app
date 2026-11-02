@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,7 +18,9 @@ public class CustomGlobalExceptionHandler {
             MethodArgumentNotValidException ex) {
         List<String> errors = ex.getBindingResult()
                 .getAllErrors().stream()
-                .map(objectError -> objectError.getDefaultMessage())
+                .map(objectError -> (objectError instanceof FieldError fieldError
+                        ? fieldError.getField() : objectError.getObjectName())
+                        + ": " + objectError.getDefaultMessage())
                 .collect(Collectors.toList());
         return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
     }
@@ -40,22 +43,22 @@ public class CustomGlobalExceptionHandler {
 
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<String> handleEntityNotFoundException(EntityNotFoundException ex) {
-        return new ResponseEntity<>("Entity not found exception occurred", HttpStatus.NOT_FOUND);
+        return new ResponseEntity<>(ex.getMessage(), HttpStatus.NOT_FOUND);
     }
 
     @ExceptionHandler(RegistrationException.class)
     public ResponseEntity<String> handleRegistrationException(RegistrationException ex) {
-        return new ResponseEntity<>("Registration Exception occurred", HttpStatus.CONFLICT);
+        return new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(PaymentExeption.class)
     public ResponseEntity<String> handlePaymentException(PaymentExeption ex) {
-        return new ResponseEntity<>("Payment Exception occurred", HttpStatus.CONFLICT);
+        return new ResponseEntity<>(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(StripeIntegrationException.class)
     public ResponseEntity<String> handleStripeIntegrationException(StripeIntegrationException ex) {
-        return new ResponseEntity<>("Stripe integration Exception occurred",
+        return new ResponseEntity<>(ex.getMessage(),
                 HttpStatus.BAD_GATEWAY);
     }
 

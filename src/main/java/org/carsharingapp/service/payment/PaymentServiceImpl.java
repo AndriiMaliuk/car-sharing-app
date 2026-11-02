@@ -39,13 +39,15 @@ public class PaymentServiceImpl implements PaymentService {
         User authenticatedUser = getAuthenticatedUser();
 
         Rental rental = rentalRepository.findById(requestDto.rentalId()).orElseThrow(() ->
-                new EntityNotFoundException("Can't find rental wtih id: " + requestDto.rentalId()));
+                new EntityNotFoundException("Can't find rental with id: " + requestDto.rentalId()));
         if (!isManager(authenticatedUser)
                 && !rental.getUserId().equals(authenticatedUser.getId())) {
-            throw new AccessDeniedException("Customers can access only their own payments!");
+            throw new AccessDeniedException("User " + authenticatedUser.getId()
+                    + " cannot create payment for rental with id: " + rental.getId());
         }
         if (paymentRepository.existsByRental_Id(requestDto.rentalId())) {
-            throw new PaymentExeption("Payment already exist");
+            throw new PaymentExeption("Payment already exists for rental with id: "
+                    + requestDto.rentalId());
         }
 
         Car car = carRepository.findById(rental.getCarId()).orElseThrow(() ->
@@ -64,7 +66,9 @@ public class PaymentServiceImpl implements PaymentService {
             payment.setPaymentStatus(fromStripe(session.getPaymentStatus()));
             return paymentMapper.toDto(paymentRepository.save(payment));
         } catch (StripeException e) {
-            throw new StripeIntegrationException("Payment exception occurred", e);
+            throw new StripeIntegrationException("Cannot create Stripe session for rental with id: "
+                    + rental.getId() + ", amount: " + amountTotal
+                    + ", currency: " + payment.getCurrency(), e);
         }
     }
 
@@ -77,7 +81,8 @@ public class PaymentServiceImpl implements PaymentService {
         User authenticatedUser = getAuthenticatedUser();
         if (!isManager(authenticatedUser)
                 && !payment.getRental().getUserId().equals(authenticatedUser.getId())) {
-            throw new AccessDeniedException("Customers can access only their own payments!");
+            throw new AccessDeniedException("User " + authenticatedUser.getId()
+                    + " cannot access payment with id: " + id);
         }
         return paymentMapper.toDto(payment);
     }
@@ -87,7 +92,8 @@ public class PaymentServiceImpl implements PaymentService {
         if (authentication != null && authentication.getPrincipal() instanceof User user) {
             return user;
         }
-        throw new IllegalStateException("Can't find authenticated user");
+        throw new IllegalStateException("Can't find authenticated user; authentication present: "
+                + (authentication != null));
     }
 
     private boolean isManager(User user) {
@@ -100,7 +106,9 @@ public class PaymentServiceImpl implements PaymentService {
                 rental.getReturnDate()
         );
         if (days < 0) {
-            throw new PaymentExeption("Return date cannot precede rental date");
+            throw new PaymentExeption("Return date " + rental.getReturnDate()
+                    + " cannot precede rental date " + rental.getRentalDate()
+                    + " for rental with id: " + rental.getId());
         }
         long billableDays = Math.max(1, days);
         return car.getDailyFee().multiply(BigDecimal.valueOf(billableDays));

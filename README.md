@@ -25,11 +25,59 @@ A car rental REST API with JWT authentication, Stripe Checkout payments, and Tel
 | Payments | Stripe Java SDK 34.0.0, Checkout, webhooks |
 | Notifications | Telegram Bot API, Spring RestClient |
 | Documentation | springdoc-openapi, Swagger UI |
-| Testing | JUnit 5, Mockito, Spring Boot Test, H2 |
+| Testing | JUnit 5, Mockito, Spring Boot Test, MySQL Testcontainers |
 | Quality checks | Checkstyle, JaCoCo, GitHub Actions |
 | Containers | Docker, Docker Compose, Eclipse Temurin 17 |
 
-The dependencies also include MySQL and Testcontainers. The current Compose setup uses PostgreSQL, while automated tests use H2 and mocks for external services.
+The current Compose setup uses PostgreSQL, while database-backed tests use MySQL 8.0.36 through Testcontainers and mocks for external services.
+
+## Model Diagram
+
+```mermaid
+erDiagram
+    USERS ||..o{ RENTALS : rents
+    CARS ||..o{ RENTALS : booked_for
+    RENTALS ||--o| PAYMENTS : has
+
+    USERS {
+        bigint id PK
+        varchar email UK
+        varchar password
+        varchar first_name
+        varchar last_name
+        varchar role
+        boolean is_deleted
+    }
+    CARS {
+        bigint id PK
+        varchar brand
+        varchar model
+        varchar type
+        int inventory
+        decimal daily_fee
+    }
+    RENTALS {
+        bigint id PK
+        date rental_date
+        date return_date
+        date actual_return_date
+        bigint user_id
+        bigint car_id
+        boolean active
+    }
+    PAYMENTS {
+        bigint id PK
+        bigint rental_id FK, UK
+        varchar session_id UK
+        varchar session_url
+        bigint amount_total
+        varchar currency
+        varchar payment_intent_id
+        varchar payment_status
+    }
+```
+
+Each rental belongs to a user and a car and can have at most one payment. `Rental` stores `userId` and `carId` as scalar IDs; the migrations currently do not define foreign keys for these two fields. `Payment.rental` is a JPA one-to-one relationship backed by a unique foreign key. Payment amounts are stored in minor currency units (cents for USD).
 
 ## Requirements
 
@@ -51,7 +99,7 @@ Run the commands below from the project root. You can replace `mvn` with `./mvnw
 
 ## Environment Setup
 
-Create a `.env` file next to `pom.xml`. Example for local development:
+Copy `.env.template` to `.env` next to `pom.xml` (`cp .env.template .env` in Git Bash, or `Copy-Item .env.template .env` in PowerShell). The template contains these local development settings:
 
 ```dotenv
 SPRING_APPLICATION_NAME=car-sharing-app
@@ -231,7 +279,9 @@ mvn clean verify
 mvn checkstyle:check
 ```
 
-Test settings are in `src/test/resources/application.properties`: an in-memory H2 database, disabled `.env` loading and Docker Compose, and placeholder credentials for external services. Service tests use Mockito. Webhook tests verify signed events without calling the Stripe API.
+Test settings are in `src/test/resources/application.properties`: MySQL 8.0.36 managed by Testcontainers, disabled `.env` loading and Docker Compose, and placeholder credentials for external services. Start Docker Desktop with Linux containers before running tests. The Testcontainers JDBC driver starts and stops disposable containers automatically; no local MySQL installation or fixed database port is needed. The first run downloads the MySQL image. Service tests use Mockito. Webhook tests verify signed events without calling the Stripe API.
+
+`ApiIntegrationTest` uses the full Spring context, MockMvc, JWT authentication, real repositories, and Liquibase migrations against a separate MySQL test container. It covers registration, access control, rentals and returns, payment creation, Stripe failures, and signed webhooks. Only the outgoing Stripe and notification services are mocked. These tests run with `mvn test` and `mvn verify`; Docker is required, but external credentials are not. To run them separately, use `mvn -Dtest=ApiIntegrationTest test`.
 
 JaCoCo enforces at least **60% line coverage across the entire `org.carsharingapp.service` package**. Controllers, security classes, DTOs, and generated mapper classes are not included in this metric. After `verify`, the report is available at `target/site/jacoco/index.html`.
 

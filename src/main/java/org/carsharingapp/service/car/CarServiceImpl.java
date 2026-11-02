@@ -11,6 +11,7 @@ import org.carsharingapp.repository.CarRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,10 +20,12 @@ public class CarServiceImpl implements CarService {
     private final CarMapper carMapper;
 
     @Override
+    @Transactional
     public CarDto save(CreateCarRequestDto requestDto) {
         Car car = carMapper.toModel(requestDto);
         if (carRepository.findByBrandAndModel(car.getBrand(), car.getModel()).isPresent()) {
-            throw new RuntimeException("Car exist in DB");
+            throw new RuntimeException("Car already exists with brand: " + car.getBrand()
+                    + " and model: " + car.getModel());
         }
         return carMapper.toDto(carRepository.save(car));
     }
@@ -40,6 +43,7 @@ public class CarServiceImpl implements CarService {
     }
 
     @Override
+    @Transactional
     public CarDto update(Long id, UpdateCarRequestDto requestDto) {
         Car car = carRepository.findById(id).orElseThrow(() ->
                 new EntityNotFoundException("Can't find car with id: " + id));
@@ -48,6 +52,7 @@ public class CarServiceImpl implements CarService {
     }
 
     @Override
+    @Transactional
     public void deleteById(Long id) {
         carRepository.deleteById(id);
     }

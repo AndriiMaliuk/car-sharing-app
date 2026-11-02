@@ -19,6 +19,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +32,7 @@ public class RentalServiceImpl implements RentalService {
     private final NotificationService notificationService;
 
     @Override
+    @Transactional
     public RentalDto save(CreateRentalRequestDto requestDto) {
         User user = getAuthenticatedUser();
         Rental rental = rentalMapper.toModel(requestDto);
@@ -40,7 +44,7 @@ public class RentalServiceImpl implements RentalService {
         car.setInventory(car.getInventory() - 1);
         carRepository.save(car);
         Rental savedRental = rentalRepository.save(rental);
-        notificationService.sendMessage(buildRentalCreatedMessage(savedRental));
+        notifyAfterCommit(buildRentalCreatedMessage(savedRental));
         return rentalMapper.toDto(savedRental);
     }
 
@@ -64,6 +68,7 @@ public class RentalServiceImpl implements RentalService {
     }
 
     @Override
+    @Transactional
     public RentalDtoWithActualReturnDate returnCar(Long rentalId) {
         Rental rental = getAccessibleRental(rentalId);
         rental.setActualReturnDate(LocalDate.now());
@@ -81,18 +86,20 @@ public class RentalServiceImpl implements RentalService {
             return requestedUserId;
         }
         if (requestedUserId != null && !requestedUserId.equals(authenticatedUser.getId())) {
-            throw new AccessDeniedException("Customers can access only their own rentals");
+            throw new AccessDeniedException("User " + authenticatedUser.getId()
+                    + " cannot access rentals for user: " + requestedUserId);
         }
         return authenticatedUser.getId();
     }
 
     private Rental getAccessibleRental(Long rentalId) {
         Rental rental = rentalRepository.findById(rentalId).orElseThrow(() ->
-                new EntityNotFoundException("Can't find rental wtih id: " + rentalId));
+                new EntityNotFoundException("Can't find rental with id: " + rentalId));
         User authenticatedUser = getAuthenticatedUser();
         if (!isManager(authenticatedUser)
                 && !rental.getUserId().equals(authenticatedUser.getId())) {
-            throw new AccessDeniedException("Customers can access only their own rentals");
+            throw new AccessDeniedException("User " + authenticatedUser.getId()
+                    + " cannot access rental with id: " + rentalId);
         }
         return rental;
     }
@@ -102,11 +109,25 @@ public class RentalServiceImpl implements RentalService {
         if (authentication != null && authentication.getPrincipal() instanceof User user) {
             return user;
         }
-        throw new IllegalStateException("Can't find authenticated user");
+        throw new IllegalStateException("Can't find authenticated user; authentication present: "
+                + (authentication != null));
     }
 
     private boolean isManager(User user) {
         return user.getRole() == User.Role.MANAGER;
+    }
+
+    private void notifyAfterCommit(String message) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            notificationService.sendMessage(message);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                notificationService.sendMessage(message);
+            }
+        });
     }
 
     private String buildRentalCreatedMessage(Rental rental) {
